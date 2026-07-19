@@ -64,15 +64,19 @@ git remote add origin https://github.com/YOUR_USER/telegram-topic-moderator.git
 git push -u origin main
 ```
 
-### 3. Add GitHub repository secrets
+### 3. Add GitHub secrets
 
-Go to **Settings → Secrets and variables → Actions** and add:
+Go to **Settings → Secrets and variables → Actions**.
+
+Add these as **Repository secrets** *or* **Environment secrets** (if you use an environment, the workflow must reference it — see `environment:` in `.github/workflows/notify-telegram.yml`):
 
 | Secret | Value | Example |
 |--------|-------|---------|
 | `TELEGRAM_NOTIFY_BOT_TOKEN` | Token of the **notification bot** (not the moderator bot) | `789012:XYZ...` |
 | `TELEGRAM_CHAT_ID` | Group supergroup ID | `-1004415462717` |
 | `TELEGRAM_TOPIC_ID` | Topic number from link | `4` |
+
+**Important:** Environment secrets only work when the job sets `environment: your-environment-name`. Repository secrets work without that.
 
 For `https://t.me/pledgefinance/4`:
 

@@ -10,6 +10,7 @@ on:
 jobs:
   notify:
     runs-on: ubuntu-latest
+    environment: pledge tg moderator
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     steps:
       - name: Send update to Telegram topic
