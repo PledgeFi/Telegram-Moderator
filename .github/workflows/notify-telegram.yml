@@ -13,11 +13,6 @@ jobs:
     environment: pledge tg moderator
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Send update to Telegram topic
         env:
           NOTIFY_TOKEN_PRIMARY: ${{ secrets.TELEGRAM_NOTIFY_BOT_TOKEN }}
@@ -31,28 +26,60 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
           COMMIT_SHA: ${{ github.sha }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
+          COMMIT_EMAIL: ${{ github.event.head_commit.author.email }}
+          COMMIT_TIME: ${{ github.event.head_commit.timestamp }}
+          COMPARE_URL: ${{ github.event.compare }}
+          PUSHER: ${{ github.event.pusher.name }}
+          COMMITS_JSON: ${{ toJson(github.event.commits) }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_USER: ${{ github.event.pull_request.user.login }}
+          PR_ADDITIONS: ${{ github.event.pull_request.additions }}
+          PR_DELETIONS: ${{ github.event.pull_request.deletions }}
+          PR_CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+          PR_MERGED_AT: ${{ github.event.pull_request.merged_at }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
         run: |
           export NOTIFY_BOT_TOKEN="${NOTIFY_TOKEN_PRIMARY:-$NOTIFY_TOKEN_FALLBACK}"
           if [ -z "$NOTIFY_BOT_TOKEN" ] || [ -z "$CHAT_ID" ] || [ -z "$TOPIC_ID" ]; then
-            echo "::error::Set TELEGRAM_NOTIFY_BOT_TOKEN (or TELEGRAM_BOT_TOKEN), TELEGRAM_CHAT_ID, TELEGRAM_TOPIC_ID"
+            echo "::error::Set TELEGRAM_NOTIFY_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_TOPIC_ID"
             exit 1
           fi
 
-          python3 scripts/build-notify-message.py > /tmp/notify-message.html
-
           python3 <<'PY'
+          import html
           import json
           import os
           import sys
           import urllib.error
           import urllib.request
 
+          def esc(v):
+              return html.escape(str(v or ""), quote=True)
+
+          def trunc(text, n):
+              text = (text or "").strip()
+              return text if len(text) <= n else text[: n - 1] + "…"
+
           TOKEN = os.environ["NOTIFY_BOT_TOKEN"]
           CHAT_ID = os.environ["CHAT_ID"]
           TOPIC_ID = int(os.environ["TOPIC_ID"])
-          with open("/tmp/notify-message.html", encoding="utf-8") as f:
-              TEXT = f.read()
           API = f"https://api.telegram.org/bot{TOKEN}"
+
+          event = os.environ.get("EVENT_NAME", "push")
+          repo = esc(os.environ.get("REPO", ""))
+          branch = esc(os.environ.get("BRANCH", ""))
+          actor = esc(os.environ.get("ACTOR", ""))
+          run_url = os.environ.get("RUN_URL", "")
+          run_no = esc(os.environ.get("RUN_NUMBER", ""))
+          sha = os.environ.get("COMMIT_SHA", "")
+          repo_url = f"https://github.com/{os.environ.get('REPO', '')}"
 
           def call(method, payload):
               req = urllib.request.Request(
@@ -73,24 +100,119 @@ jobs:
                   raise RuntimeError(result)
               return result
 
+          if event == "pull_request":
+              title = "Pull Request Merged"
+              pr_url = esc(os.environ.get("PR_URL", run_url))
+              pr_no = esc(os.environ.get("PR_NUMBER", "?"))
+              pr_title = esc(os.environ.get("PR_TITLE", ""))
+              pr_user = esc(os.environ.get("PR_USER", ""))
+              pr_body = esc(trunc(os.environ.get("PR_BODY", ""), 400))
+              pr_base = esc(os.environ.get("PR_BASE", branch))
+              pr_head = esc(os.environ.get("PR_HEAD", ""))
+              additions = os.environ.get("PR_ADDITIONS", "0")
+              deletions = os.environ.get("PR_DELETIONS", "0")
+              changed = os.environ.get("PR_CHANGED_FILES", "0")
+              merged_at = esc(os.environ.get("PR_MERGED_AT", ""))
+              body = (
+                  f"📦 <b>Repo:</b> <a href=\"{esc(repo_url)}\">{repo}</a>\n"
+                  f"🌿 <b>Branch:</b> <code>{pr_base}</code> ← <code>{pr_head}</code>\n"
+                  f"🔀 <b>PR:</b> <a href=\"{pr_url}\">#{pr_no}</a>\n"
+                  f"📌 <b>Title:</b> {pr_title}\n"
+                  f"👤 <b>Author:</b> @{pr_user}\n"
+                  f"✅ <b>Merged by:</b> {actor}\n"
+                  f"📅 <b>Merged:</b> {merged_at}\n"
+                  f"📁 <b>Files:</b> {changed} · <code>+{additions}</code> <code>-{deletions}</code>"
+              )
+              if pr_body:
+                  body += f"\n\n📄 <b>Description</b>\n<pre>{pr_body}</pre>"
+          else:
+              label = "Manual test" if event == "workflow_dispatch" else "Push"
+              title = f"Repository Updated ({label})"
+              short_sha = sha[:7]
+              commit_url = esc(os.environ.get("COMMIT_URL") or f"{repo_url}/commit/{sha}")
+              commit_msg = esc(trunc(os.environ.get("COMMIT_MSG", "No message"), 600))
+              author = esc(os.environ.get("COMMIT_AUTHOR") or actor)
+              email = esc(os.environ.get("COMMIT_EMAIL", ""))
+              commit_time = esc(os.environ.get("COMMIT_TIME", ""))
+              pusher = esc(os.environ.get("PUSHER") or actor)
+              compare_url = os.environ.get("COMPARE_URL", "")
+
+              commits = json.loads(os.environ.get("COMMITS_JSON") or "[]")
+              added, modified, removed = set(), set(), set()
+              commit_lines = []
+              for c in commits[:8]:
+                  cid = (c.get("id") or "")[:7]
+                  msg = esc(trunc((c.get("message") or "").splitlines()[0], 70))
+                  curl = esc(c.get("url") or "")
+                  cauthor = esc((c.get("author") or {}).get("name") or "")
+                  if curl:
+                      commit_lines.append(f"• <a href=\"{curl}\">{esc(cid)}</a> {msg} <i>({cauthor})</i>")
+                  else:
+                      commit_lines.append(f"• <code>{esc(cid)}</code> {msg} <i>({cauthor})</i>")
+                  added.update(c.get("added") or [])
+                  modified.update(c.get("modified") or [])
+                  removed.update(c.get("removed") or [])
+              modified -= added | removed
+              removed -= added
+
+              body = (
+                  f"📦 <b>Repo:</b> <a href=\"{esc(repo_url)}\">{repo}</a>\n"
+                  f"🌿 <b>Branch:</b> <code>{branch}</code>\n"
+                  f"👤 <b>Pushed by:</b> {pusher}\n"
+                  f"📅 <b>Time:</b> {commit_time}\n"
+                  f"🔖 <b>Commit:</b> <a href=\"{commit_url}\"><code>{esc(short_sha)}</code></a>\n"
+                  f"👨‍💻 <b>Author:</b> {author}" + (f" &lt;{email}&gt;" if email else "") + "\n\n"
+                  f"💬 <b>Message</b>\n<pre>{commit_msg}</pre>"
+              )
+              if commit_lines:
+                  body += "\n\n📝 <b>Commits (" + str(len(commits)) + ")</b>\n" + "\n".join(commit_lines)
+                  if len(commits) > 8:
+                      body += f"\n… and {len(commits) - 8} more"
+
+              total_files = len(added) + len(modified) + len(removed)
+              if total_files:
+                  body += (
+                      f"\n\n📁 <b>Files ({total_files})</b> "
+                      f"🟢{len(added)} 🟡{len(modified)} 🔴{len(removed)}\n"
+                  )
+                  shown = 0
+                  for path in sorted(added):
+                      if shown >= 15: break
+                      body += f"🟢 <code>{esc(path)}</code>\n"; shown += 1
+                  for path in sorted(modified):
+                      if shown >= 15: break
+                      body += f"🟡 <code>{esc(path)}</code>\n"; shown += 1
+                  for path in sorted(removed):
+                      if shown >= 15: break
+                      body += f"🔴 <code>{esc(path)}</code>\n"; shown += 1
+                  if total_files > shown:
+                      body += f"… and {total_files - shown} more\n"
+
+              links = [f'<a href="{esc(run_url)}">Action #{run_no}</a>', f'<a href="{commit_url}">Commit</a>']
+              if compare_url:
+                  links.insert(0, f'<a href="{esc(compare_url)}">Compare</a>')
+              body += "\n\n🔗 " + " · ".join(links)
+
+          text = f"🔄 <b>{title}</b>\n\n{body}"
+          if len(text) > 4000:
+              text = text[:3990] + "…"
+
           me = call("getMe", {})
           print(f"Notify bot: @{me['result'].get('username', '?')}")
-          print(f"Message length: {len(TEXT)} chars")
 
           payload = {
               "chat_id": CHAT_ID,
               "message_thread_id": TOPIC_ID,
               "parse_mode": "HTML",
-              "text": TEXT,
+              "text": text,
               "disable_web_page_preview": True,
           }
-
           try:
               result = call("sendMessage", payload)
-          except Exception as topic_err:
-              print(f"Topic send failed, retrying without topic: {topic_err}", file=sys.stderr)
+          except Exception as err:
+              print(f"Topic send failed: {err}", file=sys.stderr)
               payload.pop("message_thread_id", None)
               result = call("sendMessage", payload)
 
-          print(f"Telegram notification sent. message_id={result['result']['message_id']}")
+          print(f"Sent. message_id={result['result']['message_id']}")
           PY
