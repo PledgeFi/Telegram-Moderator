@@ -1,20 +1,16 @@
 #!/usr/bin/env node
 /**
  * Local test for GitHub → Telegram notify bot.
- * Usage: set env vars then run:
- *   NOTIFY_BOT_TOKEN=... CHAT_ID=-100... TOPIC_ID=4 node scripts/test-notify.js
+ * Uses NOTIFY_BOT_TOKEN from .env (separate from moderator BOT_TOKEN).
  */
 import "dotenv/config";
 
-const TOKEN =
-  process.env.NOTIFY_BOT_TOKEN ||
-  process.env.TELEGRAM_NOTIFY_BOT_TOKEN ||
-  process.env.BOT_TOKEN;
-const CHAT_ID = process.env.CHAT_ID || process.env.TELEGRAM_CHAT_ID || "-1004415462717";
-const TOPIC_ID = Number(process.env.TOPIC_ID || process.env.TELEGRAM_TOPIC_ID || "4");
+const TOKEN = process.env.NOTIFY_BOT_TOKEN || process.env.TELEGRAM_NOTIFY_BOT_TOKEN;
+const CHAT_ID = process.env.TELEGRAM_CHAT_ID || "-1004415462717";
+const TOPIC_ID = Number(process.env.TELEGRAM_TOPIC_ID || "4");
 
 if (!TOKEN) {
-  console.error("Set NOTIFY_BOT_TOKEN (notify bot token, NOT moderator bot).");
+  console.error("Set NOTIFY_BOT_TOKEN in .env (notify bot — not the moderator bot).");
   process.exit(1);
 }
 

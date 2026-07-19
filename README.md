@@ -12,7 +12,13 @@ Node.js Telegram bot for forum topic moderation, auto-reply filters, member acti
 
 ## Setup
 
-1. Copy `.env.example` to `.env` and set `BOT_TOKEN`
+1. Copy `.env.example` to `.env` and set both tokens:
+
+| Variable | Purpose |
+|----------|---------|
+| `BOT_TOKEN` | Moderator bot (`npm start`) |
+| `NOTIFY_BOT_TOKEN` | Deploy notifications (GitHub Actions + `npm run test:notify`) |
+
 2. Install dependencies:
 
 ```bash
@@ -73,7 +79,7 @@ For `https://t.me/pledgefinance/4`:
 - `TELEGRAM_CHAT_ID` = group ID (e.g. `-1004415462717`)
 - `TELEGRAM_TOPIC_ID` = `4`
 
-The **notification bot** must be in the group and allowed to post in that topic. Your main moderator bot token stays in `.env` only — never put it in GitHub secrets for this workflow.
+The **notification bot** must be in the group and allowed to post in that topic. Put the same notify token in `.env` as `NOTIFY_BOT_TOKEN` and in GitHub as `TELEGRAM_NOTIFY_BOT_TOKEN`. The moderator `BOT_TOKEN` stays local only.
 
 ### 4. Trigger
 
@@ -90,7 +96,7 @@ If secrets are missing, the workflow **fails** with a clear error (after you pus
 npm run test:notify
 ```
 
-Uses `BOT_TOKEN` from `.env` by default. Override with `CHAT_ID` and `TOPIC_ID` if needed.
+Uses `NOTIFY_BOT_TOKEN` from `.env` (not `BOT_TOKEN`).
 
 ## Data storage
 
