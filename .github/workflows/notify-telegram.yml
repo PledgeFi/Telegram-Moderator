@@ -100,9 +100,32 @@ jobs:
                   raise RuntimeError(result)
               return result
 
+          def button_row(items):
+              row = [{"text": label, "url": url} for label, url in items if url]
+              return row if row else None
+
+          def header(title):
+              bar = "─" * max(4, 28 - len(title))
+              return f"╭─ <b>{title}</b> {bar}╮"
+
+          def footer():
+              return "╰──────────────────────────────╯"
+
+          def field(label, value, last=False):
+              prefix = "└" if last else "├"
+              return f"{prefix} <b>{label}</b>  {value}"
+
+          def section(title):
+              return f"\n▸ <b>{title}</b>"
+
+          def tree_item(text, last=False):
+              prefix = "└" if last else "├"
+              return f"{prefix} {text}"
+
+          buttons = []
+
           if event == "pull_request":
               title = "Pull Request Merged"
-              pr_url = esc(os.environ.get("PR_URL", run_url))
               pr_no = esc(os.environ.get("PR_NUMBER", "?"))
               pr_title = esc(os.environ.get("PR_TITLE", ""))
               pr_user = esc(os.environ.get("PR_USER", ""))
@@ -113,23 +136,31 @@ jobs:
               deletions = os.environ.get("PR_DELETIONS", "0")
               changed = os.environ.get("PR_CHANGED_FILES", "0")
               merged_at = esc(os.environ.get("PR_MERGED_AT", ""))
+              pr_url_raw = os.environ.get("PR_URL") or run_url
+              merge_url = f"{repo_url}/commit/{sha}"
               body = (
-                  f"📦 <b>Repo:</b> <a href=\"{esc(repo_url)}\">{repo}</a>\n"
-                  f"🌿 <b>Branch:</b> <code>{pr_base}</code> ← <code>{pr_head}</code>\n"
-                  f"🔀 <b>PR:</b> <a href=\"{pr_url}\">#{pr_no}</a>\n"
-                  f"📌 <b>Title:</b> {pr_title}\n"
-                  f"👤 <b>Author:</b> @{pr_user}\n"
-                  f"✅ <b>Merged by:</b> {actor}\n"
-                  f"📅 <b>Merged:</b> {merged_at}\n"
-                  f"📁 <b>Files:</b> {changed} · <code>+{additions}</code> <code>-{deletions}</code>"
+                  field("Repo", repo) + "\n"
+                  + field("Branch", f"<code>{pr_base}</code> ← <code>{pr_head}</code>") + "\n"
+                  + field("PR", f"#{pr_no}") + "\n"
+                  + field("Title", pr_title) + "\n"
+                  + field("Author", f"@{pr_user}") + "\n"
+                  + field("Merged", f"{actor} · {merged_at}") + "\n"
+                  + field("Files", f"{changed} · <code>+{additions}</code> <code>-{deletions}</code>", last=True)
               )
               if pr_body:
-                  body += f"\n\n📄 <b>Description</b>\n<pre>{pr_body}</pre>"
+                  body += section("Description") + f"\n<pre>{pr_body}</pre>"
+              row = button_row([
+                  ("View PR", pr_url_raw),
+                  (f"Action #{run_no}", run_url),
+                  ("Commit", merge_url),
+              ])
+              if row:
+                  buttons.append(row)
           else:
               label = "Manual test" if event == "workflow_dispatch" else "Push"
               title = f"Repository Updated ({label})"
               short_sha = sha[:7]
-              commit_url = esc(os.environ.get("COMMIT_URL") or f"{repo_url}/commit/{sha}")
+              commit_url_raw = os.environ.get("COMMIT_URL") or f"{repo_url}/commit/{sha}"
               commit_msg = esc(trunc(os.environ.get("COMMIT_MSG", "No message"), 600))
               author = esc(os.environ.get("COMMIT_AUTHOR") or actor)
               email = esc(os.environ.get("COMMIT_EMAIL", ""))
@@ -140,60 +171,62 @@ jobs:
               commits = json.loads(os.environ.get("COMMITS_JSON") or "[]")
               added, modified, removed = set(), set(), set()
               commit_lines = []
-              for c in commits[:8]:
+              for i, c in enumerate(commits[:8]):
                   cid = (c.get("id") or "")[:7]
                   msg = esc(trunc((c.get("message") or "").splitlines()[0], 70))
                   curl = esc(c.get("url") or "")
                   cauthor = esc((c.get("author") or {}).get("name") or "")
+                  is_last = i == min(len(commits), 8) - 1 and len(commits) <= 8
                   if curl:
-                      commit_lines.append(f"• <a href=\"{curl}\">{esc(cid)}</a> {msg} <i>({cauthor})</i>")
+                      line = f"<a href=\"{curl}\"><code>{esc(cid)}</code></a>  {msg}  <i>{cauthor}</i>"
                   else:
-                      commit_lines.append(f"• <code>{esc(cid)}</code> {msg} <i>({cauthor})</i>")
+                      line = f"<code>{esc(cid)}</code>  {msg}  <i>{cauthor}</i>"
+                  commit_lines.append(tree_item(line, last=is_last))
                   added.update(c.get("added") or [])
                   modified.update(c.get("modified") or [])
                   removed.update(c.get("removed") or [])
               modified -= added | removed
               removed -= added
 
+              author_line = f"{author}" + (f" &lt;{email}&gt;" if email else "")
               body = (
-                  f"📦 <b>Repo:</b> <a href=\"{esc(repo_url)}\">{repo}</a>\n"
-                  f"🌿 <b>Branch:</b> <code>{branch}</code>\n"
-                  f"👤 <b>Pushed by:</b> {pusher}\n"
-                  f"📅 <b>Time:</b> {commit_time}\n"
-                  f"🔖 <b>Commit:</b> <a href=\"{commit_url}\"><code>{esc(short_sha)}</code></a>\n"
-                  f"👨‍💻 <b>Author:</b> {author}" + (f" &lt;{email}&gt;" if email else "") + "\n\n"
-                  f"💬 <b>Message</b>\n<pre>{commit_msg}</pre>"
+                  field("Repo", repo) + "\n"
+                  + field("Branch", f"<code>{branch}</code>") + "\n"
+                  + field("Pushed", pusher) + "\n"
+                  + field("Time", commit_time) + "\n"
+                  + field("Commit", f"<code>{esc(short_sha)}</code>") + "\n"
+                  + field("Author", author_line, last=True)
+                  + section("Message")
+                  + f"\n<pre>{commit_msg}</pre>"
               )
               if commit_lines:
-                  body += "\n\n📝 <b>Commits (" + str(len(commits)) + ")</b>\n" + "\n".join(commit_lines)
+                  body += section(f"Commits ({len(commits)})") + "\n" + "\n".join(commit_lines)
                   if len(commits) > 8:
-                      body += f"\n… and {len(commits) - 8} more"
+                      body += f"\n└ … +{len(commits) - 8} more"
 
               total_files = len(added) + len(modified) + len(removed)
               if total_files:
-                  body += (
-                      f"\n\n📁 <b>Files ({total_files})</b> "
-                      f"🟢{len(added)} 🟡{len(modified)} 🔴{len(removed)}\n"
-                  )
-                  shown = 0
-                  for path in sorted(added):
-                      if shown >= 15: break
-                      body += f"🟢 <code>{esc(path)}</code>\n"; shown += 1
-                  for path in sorted(modified):
-                      if shown >= 15: break
-                      body += f"🟡 <code>{esc(path)}</code>\n"; shown += 1
-                  for path in sorted(removed):
-                      if shown >= 15: break
-                      body += f"🔴 <code>{esc(path)}</code>\n"; shown += 1
-                  if total_files > shown:
-                      body += f"… and {total_files - shown} more\n"
+                  file_lines = []
+                  all_paths = [(p, "+") for p in sorted(added)]
+                  all_paths += [(p, "~") for p in sorted(modified)]
+                  all_paths += [(p, "-") for p in sorted(removed)]
+                  body += section(f"Files ({total_files})") + f"  <code>+{len(added)}</code> <code>~{len(modified)}</code> <code>-{len(removed)}</code>\n"
+                  shown_paths = all_paths[:15]
+                  for i, (path, mark) in enumerate(shown_paths):
+                      file_lines.append(tree_item(f"<code>{mark} {esc(path)}</code>", last=i == len(shown_paths) - 1 and total_files <= 15))
+                  body += "\n".join(file_lines)
+                  if total_files > 15:
+                      body += f"\n└ … +{total_files - 15} more"
 
-              links = [f'<a href="{esc(run_url)}">Action #{run_no}</a>', f'<a href="{commit_url}">Commit</a>']
-              if compare_url:
-                  links.insert(0, f'<a href="{esc(compare_url)}">Compare</a>')
-              body += "\n\n🔗 " + " · ".join(links)
+              row = button_row([
+                  ("Compare", compare_url),
+                  (f"Action #{run_no}", run_url),
+                  ("Commit", commit_url_raw),
+              ])
+              if row:
+                  buttons.append(row)
 
-          text = f"🔄 <b>{title}</b>\n\n{body}"
+          text = header(title) + "\n" + body + "\n" + footer()
           if len(text) > 4000:
               text = text[:3990] + "…"
 
@@ -207,6 +240,8 @@ jobs:
               "text": text,
               "disable_web_page_preview": True,
           }
+          if buttons:
+              payload["reply_markup"] = {"inline_keyboard": buttons}
           try:
               result = call("sendMessage", payload)
           except Exception as err:
