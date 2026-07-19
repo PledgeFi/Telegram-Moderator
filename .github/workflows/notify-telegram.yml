@@ -13,6 +13,11 @@ jobs:
     environment: pledge tg moderator
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Send update to Telegram topic
         env:
           NOTIFY_TOKEN_PRIMARY: ${{ secrets.TELEGRAM_NOTIFY_BOT_TOKEN }}
@@ -24,21 +29,18 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           ACTOR: ${{ github.actor }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
           COMMIT_SHA: ${{ github.sha }}
-          COMMIT_URL: ${{ github.event.head_commit.url }}
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           export NOTIFY_BOT_TOKEN="${NOTIFY_TOKEN_PRIMARY:-$NOTIFY_TOKEN_FALLBACK}"
           if [ -z "$NOTIFY_BOT_TOKEN" ] || [ -z "$CHAT_ID" ] || [ -z "$TOPIC_ID" ]; then
             echo "::error::Set TELEGRAM_NOTIFY_BOT_TOKEN (or TELEGRAM_BOT_TOKEN), TELEGRAM_CHAT_ID, TELEGRAM_TOPIC_ID"
             exit 1
           fi
+
+          python3 scripts/build-notify-message.py > /tmp/notify-message.html
+
           python3 <<'PY'
-          import html
           import json
           import os
           import sys
@@ -48,6 +50,8 @@ jobs:
           TOKEN = os.environ["NOTIFY_BOT_TOKEN"]
           CHAT_ID = os.environ["CHAT_ID"]
           TOPIC_ID = int(os.environ["TOPIC_ID"])
+          with open("/tmp/notify-message.html", encoding="utf-8") as f:
+              TEXT = f.read()
           API = f"https://api.telegram.org/bot{TOKEN}"
 
           def call(method, payload):
@@ -71,46 +75,13 @@ jobs:
 
           me = call("getMe", {})
           print(f"Notify bot: @{me['result'].get('username', '?')}")
-
-          event = os.environ["EVENT_NAME"]
-          repo = html.escape(os.environ["REPO"])
-          branch = html.escape(os.environ["BRANCH"])
-          actor = html.escape(os.environ["ACTOR"])
-          run_url = os.environ["RUN_URL"]
-
-          if event in ("push", "workflow_dispatch"):
-              short_sha = os.environ["COMMIT_SHA"][:7]
-              commit_url = os.environ.get("COMMIT_URL") or run_url
-              commit_msg = html.escape((os.environ.get("COMMIT_MSG") or "Manual test / push").splitlines()[0])
-              author = html.escape(os.environ.get("COMMIT_AUTHOR") or actor)
-              title = "Bot updated (push)" if event == "push" else "Bot update test"
-              body = (
-                  f"<b>Repo:</b> {repo}\n"
-                  f"<b>Branch:</b> {branch}\n"
-                  f"<b>Commit:</b> <a href=\"{html.escape(commit_url)}\">{short_sha}</a>\n"
-                  f"<b>Author:</b> {author}\n"
-                  f"<b>Message:</b> {commit_msg}"
-              )
-          else:
-              pr_title = html.escape(os.environ.get("PR_TITLE") or "Merged pull request")
-              pr_url = html.escape(os.environ.get("PR_URL") or run_url)
-              pr_number = html.escape(os.environ.get("PR_NUMBER") or "?")
-              title = "Bot updated (pull request merged)"
-              body = (
-                  f"<b>Repo:</b> {repo}\n"
-                  f"<b>Branch:</b> {branch}\n"
-                  f"<b>PR:</b> <a href=\"{pr_url}\">#{pr_number}</a>\n"
-                  f"<b>Title:</b> {pr_title}\n"
-                  f"<b>Merged by:</b> {actor}"
-              )
-
-          text = f"🔄 <b>{title}</b>\n\n{body}\n\n<a href=\"{html.escape(run_url)}\">View GitHub Action</a>"
+          print(f"Message length: {len(TEXT)} chars")
 
           payload = {
               "chat_id": CHAT_ID,
               "message_thread_id": TOPIC_ID,
               "parse_mode": "HTML",
-              "text": text,
+              "text": TEXT,
               "disable_web_page_preview": True,
           }
 
