@@ -5,6 +5,22 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = path.join(__dirname, "..", "data", "filters.json");
 
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Match trigger anywhere in the message as a whole word/token (case-insensitive). */
+export function messageContainsTrigger(text, trigger) {
+  if (!text || !trigger) return false;
+  const normalized = text.trim();
+  const word = trigger.trim().toLowerCase();
+  if (!word) return false;
+  if (normalized.toLowerCase() === word) return true;
+
+  const re = new RegExp(`(^|[^\\w])${escapeRegex(word)}($|[^\\w])`, "i");
+  return re.test(normalized);
+}
+
 class FilterStorage {
   constructor() {
     this.data = this.load();
@@ -72,6 +88,26 @@ class FilterStorage {
 
   list(chatId) {
     return Object.values(this._chat(chatId).filters || {});
+  }
+
+  findMatch(chatId, text) {
+    const filters = this.list(chatId);
+    if (!filters.length || !text?.trim()) return null;
+
+    const sorted = [...filters].sort((a, b) => b.trigger.length - a.trigger.length);
+
+    for (const entry of sorted) {
+      if (!messageContainsTrigger(text, entry.trigger)) continue;
+      const responses = entry.responses?.length
+        ? entry.responses
+        : entry.response
+          ? [entry.response]
+          : [];
+      if (responses.length) {
+        return { trigger: entry.trigger, responses };
+      }
+    }
+    return null;
   }
 }
 

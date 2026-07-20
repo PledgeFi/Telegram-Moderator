@@ -178,12 +178,10 @@ export async function handleFilterTrigger(ctx, msg) {
   if (!shouldTriggerFilter(msg)) return false;
   if (msg.from) userRegistry.remember(ctx.chat.id, msg.from);
 
-  const trigger = msg.text.trim().toLowerCase();
-  if (!trigger) return false;
+  const match = filterStorage.findMatch(ctx.chat.id, msg.text || "");
+  if (!match) return false;
 
-  const responses = filterStorage.getResponses(ctx.chat.id, trigger);
-  if (responses.length === 0) return false;
-
+  const { trigger, responses } = match;
   const payload = buildFilterReplyPayload(responses);
   const ok = await sendFilterReply(ctx.telegram, ctx.chat.id, msg, payload);
 
