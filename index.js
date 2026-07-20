@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { BOT_TOKEN, KNOWN_CHAT_IDS } from "./src/config.js";
+import { BOT_TOKEN, KNOWN_CHAT_IDS, ADMIN_IDS } from "./src/config.js";
 import { registerBotCommands } from "./src/commands.js";
 import { createBot } from "./src/bot.js";
 import { storage } from "./src/storage.js";
@@ -22,16 +22,33 @@ for (const topic of storage.listAllTopics()) {
 
 const bot = createBot();
 
+const me = await bot.telegram.getMe();
+console.log(`Bot online: @${me.username}`);
+console.log(`KNOWN_CHAT_IDS: ${KNOWN_CHAT_IDS.join(", ") || "(none — set on Railway)"}`);
+console.log(`ADMIN_IDS: ${[...ADMIN_IDS].join(", ") || "(none)"}`);
+
 for (const chatId of KNOWN_CHAT_IDS) {
   await refreshChatStatus(bot.telegram, chatId).catch((err) => {
     console.warn(`Could not refresh known chat ${chatId}:`, err.message);
   });
 }
 
-await registerBotCommands(bot.telegram);
-await seedAllKnownChats(bot.telegram);
+try {
+  await registerBotCommands(bot.telegram);
+} catch (err) {
+  console.warn("registerBotCommands failed:", err.message);
+}
+
+try {
+  await seedAllKnownChats(bot.telegram);
+} catch (err) {
+  console.warn("seedAllKnownChats failed:", err.message);
+}
+
 for (const chat of chatRegistry.list()) {
-  await refreshModeratedMembers(bot.telegram, chat.chatId);
+  await refreshModeratedMembers(bot.telegram, chat.chatId).catch((err) => {
+    console.warn(`refreshModeratedMembers failed for ${chat.chatId}:`, err.message);
+  });
 }
 await bot.telegram.deleteWebhook({ drop_pending_updates: true });
 await bot.launch({

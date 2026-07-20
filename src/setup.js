@@ -28,28 +28,28 @@ export const MAIN_MENU = Markup.keyboard([
   .persistent();
 
 export const WELCOME_TEXT =
-  "🤖 *Telegram Topic Moderator*\n\n" +
-  "Manage read\\-only topics across multiple groups/channels — all from here\\.\n\n" +
-  "*Quick start:*\n" +
-  "1\\. Tap *🔗 Add to Group* and add the bot as admin\n" +
-  "2\\. You'll get a message here automatically\n" +
-  "3\\. Tap *➕ Add Topic* and paste topic link\\(s\\)\n\n" +
-  "No setup needed inside the group\\.";
+  "<b>Telegram Topic Moderator</b>\n\n" +
+  "Manage read-only topics across groups/channels from here.\n\n" +
+  "<b>Quick start:</b>\n" +
+  "1. Tap <b>Add to Group</b> and add the bot as admin\n" +
+  "2. You'll get a message here automatically\n" +
+  "3. Tap <b>Add Topic</b> and paste topic link(s)\n\n" +
+  "No setup needed inside the group.";
 
 export const GUIDE_TEXT =
-  "ℹ️ *Setup Guide*\n\n" +
-  "*Step 1 — Add the bot*\n" +
-  "Tap 🔗 Add to Group → choose Group or Channel\n\n" +
-  "*Step 2 — Grant admin rights*\n" +
-  "When adding, enable *Delete messages*\n\n" +
-  "*Step 3 — Add topics*\n" +
-  "Tap ➕ Add Topic → paste one or more topic links\n\n" +
-  "*Link examples:*\n" +
-  "`https://t.me/pledgefinance/4` \\(specific topic\\)\n" +
-  "`https://t.me/pledgefinance` \\(All tab / main feed\\)\n" +
-  "`https://t.me/c/1234567890/4`\n\n" +
-  "Send multiple links at once \\(one per line\\)\\. " +
-  "You can also forward a message from a topic\\.";
+  "<b>Setup Guide</b>\n\n" +
+  "<b>Step 1 — Add the bot</b>\n" +
+  "Tap Add to Group → choose Group or Channel\n\n" +
+  "<b>Step 2 — Grant admin rights</b>\n" +
+  "When adding, enable <b>Delete messages</b>\n\n" +
+  "<b>Step 3 — Add topics</b>\n" +
+  "Tap Add Topic → paste one or more topic links\n\n" +
+  "<b>Link examples:</b>\n" +
+  "<code>https://t.me/pledgefinance/4</code> (specific topic)\n" +
+  "<code>https://t.me/pledgefinance</code> (All tab)\n" +
+  "<code>https://t.me/c/1234567890/4</code>\n\n" +
+  "Send multiple links at once (one per line). " +
+  "You can also forward a message from a topic.";
 
 function unauthorized(ctx) {
   return ctx.reply(
@@ -60,9 +60,18 @@ function unauthorized(ctx) {
 }
 
 async function guardPrivateAdmin(ctx) {
-  if (ctx.chat.type !== "private") return false;
-  if (!(await canUseBot(ctx.telegram, ctx.from?.id))) {
-    await unauthorized(ctx);
+  if (ctx.chat?.type !== "private") {
+    await ctx.reply("Open the bot in DM (private chat) and send /start.").catch(() => {});
+    return false;
+  }
+  try {
+    if (!(await canUseBot(ctx.telegram, ctx.from?.id))) {
+      await unauthorized(ctx);
+      return false;
+    }
+  } catch (err) {
+    console.error("canUseBot failed:", err.message);
+    await ctx.reply("Could not verify admin access. Try again in a moment.").catch(() => {});
     return false;
   }
   return true;
@@ -81,7 +90,7 @@ function readyGroups() {
 }
 
 export async function showMainMenu(ctx, text = WELCOME_TEXT) {
-  await ctx.reply(text, { parse_mode: "MarkdownV2", ...MAIN_MENU });
+  await ctx.reply(text, { parse_mode: "HTML", ...MAIN_MENU });
 }
 
 async function buildAddGroupKeyboard(telegram) {
@@ -326,25 +335,32 @@ async function notifyConnectionUpdate(telegram, userId, chat, member) {
 
 export function registerSetupHandlers(bot) {
   bot.command(["start", "menu"], async (ctx) => {
-    if (!(await guardPrivateAdmin(ctx))) return;
-    clearSession(ctx.from.id);
+    try {
+      if (!(await guardPrivateAdmin(ctx))) return;
+      clearSession(ctx.from.id);
 
-    if (ctx.startPayload === "ready") {
-      await ctx.reply(
-        "✅ Welcome back! The bot is connected.\n\nLet's add topics to restrict.",
-        MAIN_MENU
-      );
-      await startAddTopicFlow(ctx);
-      return;
+      if (ctx.startPayload === "ready") {
+        await ctx.reply(
+          "Welcome back! The bot is connected.\n\nLet's add topics to restrict.",
+          MAIN_MENU
+        );
+        await startAddTopicFlow(ctx);
+        return;
+      }
+
+      await showMainMenu(ctx);
+    } catch (err) {
+      console.error("/start handler error:", err.message);
+      await ctx
+        .reply("Something went wrong loading the menu. Please try /start again.", MAIN_MENU)
+        .catch(() => {});
     }
-
-    await showMainMenu(ctx);
   });
 
   bot.command("help", async (ctx, next) => {
     if (ctx.chat.type !== "private") return next();
     if (!(await guardPrivateAdmin(ctx))) return;
-    await ctx.reply(GUIDE_TEXT, { parse_mode: "MarkdownV2", ...MAIN_MENU });
+    await ctx.reply(GUIDE_TEXT, { parse_mode: "HTML", ...MAIN_MENU });
   });
 
   bot.hears("🔗 Add to Group", async (ctx) => {
@@ -354,7 +370,7 @@ export function registerSetupHandlers(bot) {
 
   bot.hears("ℹ️ Setup Guide", async (ctx) => {
     if (!(await guardPrivateAdmin(ctx))) return;
-    await ctx.reply(GUIDE_TEXT, { parse_mode: "MarkdownV2", ...MAIN_MENU });
+    await ctx.reply(GUIDE_TEXT, { parse_mode: "HTML", ...MAIN_MENU });
   });
 
   bot.hears("➕ Add Topic", async (ctx) => {

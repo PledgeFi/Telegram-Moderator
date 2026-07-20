@@ -19,16 +19,27 @@ export function createBot() {
 
   const bot = new Telegraf(BOT_TOKEN);
 
-  bot.catch((err, ctx) => {
+  bot.catch(async (err, ctx) => {
     console.error("Bot handler error:", err.message);
+    try {
+      if (ctx.chat?.type === "private") {
+        await ctx.reply("Something went wrong. Please try /start again.");
+      }
+    } catch {
+      // ignore secondary failures
+    }
   });
 
   bot.use(async (ctx, next) => {
-    if (ctx.chat?.type === "private") return next();
+    const msg = ctx.message || ctx.channelPost;
+    if (ctx.chat?.type === "private") {
+      const text = msg?.text ? ` text="${msg.text.slice(0, 40)}"` : "";
+      console.log(`DM: ${ctx.updateType} user=${ctx.from?.id}${text}`);
+      return next();
+    }
     if (ctx.chat?.id) {
       refreshChatStatus(ctx.telegram, ctx.chat.id).catch(() => {});
     }
-    const msg = ctx.message || ctx.channelPost;
     if (msg) rememberMessageUser(ctx.chat.id, msg);
     const chat = ctx.chat?.title || ctx.chat?.username || ctx.chat?.id || "unknown";
     const actor = msg?.sender_chat?.title || msg?.from?.first_name || "unknown";
