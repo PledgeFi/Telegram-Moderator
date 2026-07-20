@@ -49,14 +49,24 @@ function getTopicName(chatId, threadId) {
 
 export async function verifyBotAccess(telegram, chatId) {
   const me = await telegram.getMe();
-  const member = await telegram.getChatMember(chatId, me.id);
+  let member;
+
+  try {
+    member = await telegram.getChatMember(chatId, me.id);
+  } catch (err) {
+    const desc = err.response?.description || err.message || String(err);
+    if (/not a member|chat not found|bot was kicked/i.test(desc)) {
+      throw new Error("Add the bot to the group/channel and make it an admin first.");
+    }
+    throw new Error(desc);
+  }
 
   if (member.status !== "administrator") {
     throw new Error("Add the bot to the group/channel and make it an admin first.");
   }
 
   if (member.can_delete_messages === false) {
-    throw new Error("The bot needs the \"Delete messages\" admin permission.");
+    throw new Error('The bot needs the "Delete messages" admin permission.');
   }
 }
 

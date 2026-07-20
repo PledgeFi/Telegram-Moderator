@@ -86,8 +86,27 @@ async function guardPrivateAdmin(ctx) {
 }
 
 async function guardCallbackAdmin(ctx) {
-  if (!(await canUseBot(ctx.telegram, ctx.from?.id))) {
-    await ctx.answerCbQuery("Unauthorized");
+  try {
+    if (!(await canUseBot(ctx.telegram, ctx.from?.id))) {
+      await ctx.answerCbQuery("Unauthorized");
+      return false;
+    }
+  } catch (err) {
+    console.error("canUseBot failed:", err.message);
+    await ctx.answerCbQuery("Could not verify access").catch(() => {});
+    return false;
+  }
+  return true;
+}
+
+function guardSetupSession(ctx, requiredStep) {
+  const session = getSession(ctx.from?.id);
+  if (!session) {
+    ctx.answerCbQuery("Session expired — send /start again").catch(() => {});
+    return false;
+  }
+  if (requiredStep && session.step !== requiredStep) {
+    ctx.answerCbQuery("Session expired — send /start again").catch(() => {});
     return false;
   }
   return true;
@@ -170,7 +189,7 @@ async function startAddTopicFlow(ctx) {
       "https://t.me/pledgefinance/4  (specific topic)\n" +
       "https://t.me/pledgefinance     (All tab)\n" +
       "https://t.me/c/1234567890/4\n\n" +
-      "Multiple links? Send one per line.\n" +
+      "Multiple links? Paste separated by spaces or one per line.\n" +
       "Or forward a message from inside the topic.",
     Markup.inlineKeyboard([[Markup.button.callback("« Cancel", "cancel_add")]])
   );
@@ -209,7 +228,8 @@ async function resolvePendingTopics(telegram, urls) {
         username: resolved.username,
       });
     } catch (err) {
-      errors.push(`${url}\n  → ${err.message}`);
+      const msg = err.response?.description || err.message || String(err);
+      errors.push(`${url}\n  → ${msg}`);
     }
   }
 
@@ -420,21 +440,19 @@ export function registerSetupHandlers(bot) {
   });
 
   bot.action("cancel_add", async (ctx) => {
-    if (!(await guardCallbackAdmin(ctx))) return;
-    await ctx.answerCbQuery();
+    await ctx.answerCbQuery().catch(() => {});
     clearSession(ctx.from.id);
-    await ctx.editMessageText("Cancelled.");
+    await ctx.editMessageText("Cancelled.").catch(() => {});
     await ctx.reply("Back to menu:", MAIN_MENU);
   });
 
   bot.action("add_another_topic", async (ctx) => {
-    if (!(await guardCallbackAdmin(ctx))) return;
-    await ctx.answerCbQuery();
+    await ctx.answerCbQuery().catch(() => {});
     await startAddTopicFlow(ctx);
   });
 
   bot.action("skip_purpose", async (ctx) => {
-    if (!(await guardCallbackAdmin(ctx))) return;
+    if (!guardSetupSession(ctx, "add_purpose")) return;
     const session = getSession(ctx.from.id);
     const pending = session?.pending || [
       { chatId: session?.chatId, threadId: session?.threadId, link: session?.link },
@@ -533,9 +551,20 @@ export function registerSetupHandlers(bot) {
     if (ctx.chat.type !== "private") return next();
 
     const session = getSession(ctx.from.id);
-    if (session && !(await canUseBot(ctx.telegram, ctx.from?.id))) {
-      await unauthorized(ctx);
-      return;
+    const setupSteps = new Set(["add_link", "add_purpose", "add_forward"]);
+    if (session && !setupSteps.has(session.step)) {
+      try {
+        if (!(await canUseBot(ctx.telegram, ctx.from?.id))) {
+          await unauthorized(ctx);
+          return;
+        }
+      } catch (err) {
+        console.error("canUseBot failed:", err.message);
+        await ctx.reply(
+          "Could not verify admin access. Make sure the bot is added as admin, then try again."
+        ).catch(() => {});
+        return;
+      }
     }
 
     if (session?.step === "add_forward" || (!session && ctx.message.forward_from_chat)) {
@@ -589,42 +618,51 @@ export function registerSetupHandlers(bot) {
     const text = ctx.message.text.trim();
 
     if (session.step === "add_link") {
-      const urls = extractTopicUrls(text);
-      if (urls.length === 0) {
+      try {
+        const urls = extractTopicUrls(text);
+        if (urls.length === 0) {
+          await ctx.reply(
+            "Invalid link format.\n\nExample:\nhttps://t.me/pledgefinance/4\n\n" +
+              "Tip: you can paste multiple links separated by spaces or new lines."
+          );
+          return;
+        }
+
+        const { pending, errors, skipped } = await resolvePendingTopics(ctx.telegram, urls);
+
+        if (pending.length === 0) {
+          const lines = ["No topics could be added."];
+          if (skipped.length) lines.push("", "Already monitored:", ...skipped);
+          if (errors.length) lines.push("", "Errors:", ...errors);
+          await ctx.reply(lines.join("\n"), purposePromptKeyboard());
+          return;
+        }
+
+        setSession(ctx.from.id, { step: "add_purpose", pending });
+
+        const preview = pending
+          .map((t) => `• ${t.link || `${t.chatId}/${t.threadId}`}`)
+          .join("\n");
+
+        let reply =
+          `${pending.length} topic(s) ready.\n\n${preview}\n\n` +
+          "Send a custom reason (optional), or tap Skip:";
+
+        if (skipped.length) {
+          reply += `\n\n(Skipped ${skipped.length} already monitored)`;
+        }
+        if (errors.length) {
+          reply += `\n\nSome links failed:\n${errors.join("\n\n")}`;
+        }
+
+        await ctx.reply(reply, purposePromptKeyboard());
+      } catch (err) {
+        console.error("add_link error:", err.message);
         await ctx.reply(
-          "Invalid link format.\n\nExample:\nhttps://t.me/pledgefinance/4"
+          `Failed to process topic links:\n${err.message}\n\nMake sure the bot is admin in the group, then try again.`,
+          purposePromptKeyboard()
         );
-        return;
       }
-
-      const { pending, errors, skipped } = await resolvePendingTopics(ctx.telegram, urls);
-
-      if (pending.length === 0) {
-        const lines = ["No new topics to add."];
-        if (skipped.length) lines.push("", "Already monitored:", ...skipped);
-        if (errors.length) lines.push("", "Errors:", ...errors);
-        await ctx.reply(lines.join("\n"));
-        return;
-      }
-
-      setSession(ctx.from.id, { step: "add_purpose", pending });
-
-      const preview = pending
-        .map((t) => `• ${t.link || `${t.chatId}/${t.threadId}`}`)
-        .join("\n");
-
-      let reply =
-        `${pending.length} topic(s) ready.\n\n${preview}\n\n` +
-        "Send a custom reason (optional), or tap Skip:";
-
-      if (skipped.length) {
-        reply += `\n\n(Skipped ${skipped.length} already monitored)`;
-      }
-      if (errors.length) {
-        reply += `\n\n⚠️ Some links failed:\n${errors.join("\n")}`;
-      }
-
-      await ctx.reply(reply, purposePromptKeyboard());
       return;
     }
 
