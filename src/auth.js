@@ -30,7 +30,12 @@ export async function isAdminInAnyChat(telegram, userId) {
   if (userId == null) return false;
 
   for (const chatId of collectKnownChatIds()) {
-    if (await isGroupAdmin(telegram, chatId, userId)) return true;
+    if (!Number.isFinite(chatId)) continue;
+    try {
+      if (await isGroupAdmin(telegram, chatId, userId)) return true;
+    } catch (err) {
+      console.warn(`Admin check skipped for chat ${chatId}:`, err.message);
+    }
   }
   return false;
 }

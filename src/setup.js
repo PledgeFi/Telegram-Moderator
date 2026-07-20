@@ -53,17 +53,22 @@ export const GUIDE_TEXT =
 
 function unauthorized(ctx) {
   return ctx.reply(
-    "⛔ DM setup is for group admins only.\n\n" +
-      "If you are an admin, set KNOWN_CHAT_IDS on the server (your group chat ID) " +
-      "or send any message in the group first, then try /start here again."
+    "Group admin access required for this action.\n\n" +
+      "1. Tap Add to Group and add the bot as admin\n" +
+      "2. Then try again here"
   );
 }
 
-async function guardPrivateAdmin(ctx) {
+function guardPrivateChat(ctx) {
   if (ctx.chat?.type !== "private") {
-    await ctx.reply("Open the bot in DM (private chat) and send /start.").catch(() => {});
+    ctx.reply("Open the bot in DM (private chat) and send /start.").catch(() => {});
     return false;
   }
+  return true;
+}
+
+async function guardPrivateAdmin(ctx) {
+  if (!guardPrivateChat(ctx)) return false;
   try {
     if (!(await canUseBot(ctx.telegram, ctx.from?.id))) {
       await unauthorized(ctx);
@@ -71,7 +76,10 @@ async function guardPrivateAdmin(ctx) {
     }
   } catch (err) {
     console.error("canUseBot failed:", err.message);
-    await ctx.reply("Could not verify admin access. Try again in a moment.").catch(() => {});
+    await ctx.reply(
+      "Could not verify group admin access.\n\n" +
+        "Add the bot to your group first (tap Add to Group), then try again."
+    ).catch(() => {});
     return false;
   }
   return true;
@@ -336,10 +344,11 @@ async function notifyConnectionUpdate(telegram, userId, chat, member) {
 export function registerSetupHandlers(bot) {
   bot.command(["start", "menu"], async (ctx) => {
     try {
-      if (!(await guardPrivateAdmin(ctx))) return;
+      if (!guardPrivateChat(ctx)) return;
       clearSession(ctx.from.id);
 
       if (ctx.startPayload === "ready") {
+        if (!(await guardPrivateAdmin(ctx))) return;
         await ctx.reply(
           "Welcome back! The bot is connected.\n\nLet's add topics to restrict.",
           MAIN_MENU
@@ -359,22 +368,22 @@ export function registerSetupHandlers(bot) {
 
   bot.command("help", async (ctx, next) => {
     if (ctx.chat.type !== "private") return next();
-    if (!(await guardPrivateAdmin(ctx))) return;
+    if (!guardPrivateChat(ctx)) return;
     await ctx.reply(GUIDE_TEXT, { parse_mode: "HTML", ...MAIN_MENU });
   });
 
   bot.hears("🔗 Add to Group", async (ctx) => {
-    if (!(await guardPrivateAdmin(ctx))) return;
+    if (!guardPrivateChat(ctx)) return;
     await sendGroupsStatus(ctx);
   });
 
   bot.hears("ℹ️ Setup Guide", async (ctx) => {
-    if (!(await guardPrivateAdmin(ctx))) return;
+    if (!guardPrivateChat(ctx)) return;
     await ctx.reply(GUIDE_TEXT, { parse_mode: "HTML", ...MAIN_MENU });
   });
 
   bot.hears("➕ Add Topic", async (ctx) => {
-    if (!(await guardPrivateAdmin(ctx))) return;
+    if (!guardPrivateChat(ctx)) return;
     clearSession(ctx.from.id);
 
     if (readyGroups().length === 0) {
@@ -521,11 +530,13 @@ export function registerSetupHandlers(bot) {
   });
 
   bot.on("message", async (ctx, next) => {
-    if (ctx.chat.type !== "private" || !(await canUseBot(ctx.telegram, ctx.from?.id))) {
-      return next();
-    }
+    if (ctx.chat.type !== "private") return next();
 
     const session = getSession(ctx.from.id);
+    if (session && !(await canUseBot(ctx.telegram, ctx.from?.id))) {
+      await unauthorized(ctx);
+      return;
+    }
 
     if (session?.step === "add_forward" || (!session && ctx.message.forward_from_chat)) {
       const forwarded = extractForwardedTopic(ctx.message);
