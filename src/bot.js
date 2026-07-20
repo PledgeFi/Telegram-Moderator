@@ -5,7 +5,7 @@ import { moderateMessage } from "./moderation.js";
 import { registerSetupHandlers } from "./setup.js";
 import { registerFilterHandlers, handleFilterTrigger } from "./filters.js";
 import { registerMemberActionHandlers } from "./memberActions.js";
-import { registerGroupHelpHandler } from "./commands.js";
+import { registerGroupHelpHandler, registerGroupCommandsForChat } from "./commands.js";
 import { registerWelcomeHandlers, handleNewChatMembers, handleChatMemberJoin } from "./welcome.js";
 import { registerStocksHandlers } from "./stocks.js";
 import { discoverTopicFromMessage } from "./topicDiscovery.js";
@@ -31,6 +31,8 @@ export function createBot() {
     }
   });
 
+  const commandsSynced = new Set();
+
   bot.use(async (ctx, next) => {
     const msg = ctx.message || ctx.channelPost;
     if (ctx.chat?.type === "private") {
@@ -40,6 +42,12 @@ export function createBot() {
     }
     if (ctx.chat?.id) {
       refreshChatStatus(ctx.telegram, ctx.chat.id).catch(() => {});
+      if (!commandsSynced.has(ctx.chat.id)) {
+        commandsSynced.add(ctx.chat.id);
+        registerGroupCommandsForChat(ctx.telegram, ctx.chat.id).catch((err) => {
+          console.warn(`Command sync failed for ${ctx.chat.id}:`, err.message);
+        });
+      }
     }
     if (msg) rememberMessageUser(ctx.chat.id, msg);
     const chat = ctx.chat?.title || ctx.chat?.username || ctx.chat?.id || "unknown";

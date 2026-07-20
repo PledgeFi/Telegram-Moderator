@@ -1,9 +1,11 @@
 import { chatRegistry } from "./chatRegistry.js";
+import { KNOWN_CHAT_IDS } from "./config.js";
 
 export const BOT_COMMANDS = [
   { command: "start", description: "Open setup menu" },
   { command: "menu", description: "Open setup menu" },
   { command: "help", description: "Setup guide" },
+  { command: "stocks", description: "US watchlist prices" },
 ];
 
 export const GROUP_COMMANDS = [
@@ -20,7 +22,7 @@ export const GROUP_COMMANDS = [
   { command: "welcome", description: "Show welcome message settings" },
   { command: "unwelcome", description: "Disable welcome message" },
   { command: "myid", description: "Show your Telegram user ID" },
-  { command: "stocks", description: "US watchlist prices (AAPL, MSFT, …)" },
+  { command: "stocks", description: "US watchlist prices" },
 ];
 
 export const GROUP_HELP_TEXT =
@@ -56,40 +58,43 @@ export async function registerGroupCommandsForChat(telegram, chatId) {
   });
 }
 
-export async function registerAllKnownGroupCommands(telegram) {
-  const chats = chatRegistry.list().filter(
-    (c) => c.type === "group" || c.type === "supergroup" || c.type === "channel"
-  );
+function collectCommandChatIds() {
+  const ids = new Set(KNOWN_CHAT_IDS);
+  for (const chat of chatRegistry.list()) {
+    ids.add(Number(chat.chatId));
+  }
+  return [...ids].filter((id) => Number.isFinite(id));
+}
 
-  for (const chat of chats) {
+export async function registerAllKnownGroupCommands(telegram) {
+  for (const chatId of collectCommandChatIds()) {
     try {
-      await registerGroupCommandsForChat(telegram, chat.chatId);
+      await registerGroupCommandsForChat(telegram, chatId);
     } catch (err) {
-      console.warn(`Failed to register commands for chat ${chat.chatId}:`, err.message);
+      console.warn(`Failed to register commands for chat ${chatId}:`, err.message);
     }
   }
 }
 
 export async function registerBotCommands(telegram) {
-  await telegram.setMyCommands(GROUP_COMMANDS, {
-    scope: { type: "default" },
-  });
+  const groupScopes = [
+    { type: "default" },
+    { type: "all_group_chats" },
+    { type: "all_chat_administrators" },
+  ];
+
+  for (const scope of groupScopes) {
+    await telegram.setMyCommands(GROUP_COMMANDS, { scope });
+  }
 
   await telegram.setMyCommands(BOT_COMMANDS, {
     scope: { type: "all_private_chats" },
   });
 
-  await telegram.setMyCommands(GROUP_COMMANDS, {
-    scope: { type: "all_group_chats" },
-  });
-
-  await telegram.setMyCommands(GROUP_COMMANDS, {
-    scope: { type: "all_chat_administrators" },
-  });
-
   await registerAllKnownGroupCommands(telegram);
 
-  console.log("Bot command suggestions registered.");
+  const names = GROUP_COMMANDS.map((c) => c.command).join(", ");
+  console.log(`Bot commands registered (${GROUP_COMMANDS.length}): ${names}`);
 }
 
 async function handleGroupHelp(ctx) {
