@@ -1,4 +1,5 @@
 import { canManageChat, isPrivileged, resolveActorId } from "./moderation.js";
+import { WARNING_DELETE_SECONDS } from "./config.js";
 import { blockwordStorage } from "./blockwordStorage.js";
 import { modLogStorage } from "./modLogStorage.js";
 import { formatUser, modLogHeader, sendModLog } from "./modLog.js";
@@ -129,6 +130,26 @@ function shouldScanMessage(msg) {
   return true;
 }
 
+async function sendBlockwordNotice(telegram, chatId, threadId, user) {
+  const mention = `<a href="tg://user?id=${user.id}">${escapeHtml(user.first_name || "User")}</a>`;
+  const text =
+    `⚠️ ${mention}, please respect the group rules.\n` +
+    `Your message contained a blocked word and was removed.`;
+
+  const extra = threadId > 0 ? { message_thread_id: threadId } : {};
+  try {
+    return await telegram.sendMessage(chatId, text, {
+      ...extra,
+      parse_mode: "HTML",
+    });
+  } catch (err) {
+    if (threadId > 0) {
+      return telegram.sendMessage(chatId, text, { parse_mode: "HTML" });
+    }
+    throw err;
+  }
+}
+
 export async function handleBlockwordCheck(ctx, msg) {
   if (!shouldScanMessage(msg)) return false;
 
@@ -149,6 +170,16 @@ export async function handleBlockwordCheck(ctx, msg) {
   }
 
   userRegistry.remember(ctx.chat.id, user);
+
+  const threadId = msg.message_thread_id ?? 0;
+  try {
+    const notice = await sendBlockwordNotice(ctx.telegram, ctx.chat.id, threadId, user);
+    setTimeout(() => {
+      ctx.telegram.deleteMessage(ctx.chat.id, notice.message_id).catch(() => {});
+    }, WARNING_DELETE_SECONDS * 1000);
+  } catch (err) {
+    console.warn(`Blockword notice failed in ${ctx.chat.id}:`, err.message);
+  }
 
   await sendModLog(
     ctx.telegram,
