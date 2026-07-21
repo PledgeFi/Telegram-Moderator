@@ -18,3 +18,17 @@ export const KNOWN_CHAT_IDS = (process.env.KNOWN_CHAT_IDS || "")
   .map(Number);
 
 export const WARNING_DELETE_SECONDS = 15;
+
+/** Auto-mute after this many warnings (default 3). Set 0 to disable. */
+export const WARN_AUTO_MUTE = Math.max(0, Number(process.env.WARN_AUTO_MUTE || "3") || 0);
+
+/** Optional fallback mod-log destination (per-group override via /setmodlog). */
+export const MOD_LOG_CHAT_ID = (() => {
+  const raw = (process.env.MOD_LOG_CHAT_ID || "").trim();
+  return /^-?\d+$/.test(raw) ? Number(raw) : null;
+})();
+
+export const MOD_LOG_TOPIC_ID = (() => {
+  const raw = (process.env.MOD_LOG_TOPIC_ID || "").trim();
+  return /^\d+$/.test(raw) ? Number(raw) : null;
+})();

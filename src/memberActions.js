@@ -2,6 +2,7 @@ import { isGroupAdmin } from "./auth.js";
 import { canManageChat, resolveActorId } from "./moderation.js";
 import { userRegistry } from "./userRegistry.js";
 import { moderatedStore } from "./moderatedStore.js";
+import { formatUser, modLogHeader, sendModLog } from "./modLog.js";
 
 const CONFIRM_DELETE_SECONDS = 5;
 
@@ -305,6 +306,7 @@ async function handleMute(ctx) {
     moderatedStore.remember(ctx.chat.id, member.user);
     userRegistry.remember(ctx.chat.id, member.user);
     await replyEphemeral(ctx, `Muted ${displayName(target)}.`);
+    await logModAction(ctx, "Mute", member.user);
   } catch (err) {
     await replyEphemeral(ctx, formatModError(err, "mute"));
   }
@@ -323,6 +325,7 @@ async function handleBan(ctx) {
       revoke_messages: true,
     });
     await replyEphemeral(ctx, `Banned ${displayName(target)}.`);
+    await logModAction(ctx, "Ban", target);
   } catch (err) {
     await replyEphemeral(ctx, `Failed to ban: ${err.message}`);
   }
@@ -342,6 +345,7 @@ async function handleKick(ctx) {
     });
     await ctx.telegram.unbanChatMember(ctx.chat.id, target.id);
     await replyEphemeral(ctx, `Kicked ${displayName(target)}.`);
+    await logModAction(ctx, "Kick", target);
   } catch (err) {
     await replyEphemeral(ctx, `Failed to kick: ${err.message}`);
   }
@@ -349,6 +353,27 @@ async function handleKick(ctx) {
 
 function displayName(user) {
   return user.first_name || user.username || String(user.id);
+}
+
+function escapeHtml(text) {
+  return String(text ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+async function logModAction(ctx, action, target, extra = "") {
+  const group = escapeHtml(ctx.chat.title || String(ctx.chat.id));
+  await sendModLog(
+    ctx.telegram,
+    ctx.chat.id,
+    `${modLogHeader(action)}\n` +
+      `Group: ${group}\n` +
+      `User: ${formatUser(target)}\n` +
+      `By: ${formatUser(ctx.from)}` +
+      (extra ? `\n${extra}` : ""),
+    { threadId: ctx.message?.message_thread_id ?? null }
+  );
 }
 
 async function validateUnban(ctx) {
@@ -388,6 +413,7 @@ async function handleUnmute(ctx) {
     });
     const label = target.username ? `@${target.username}` : displayName(target);
     await replyEphemeral(ctx, `Unmuted ${label}.`);
+    await logModAction(ctx, "Unmute", target);
   } catch (err) {
     await replyEphemeral(ctx, formatModError(err, "unmute"));
   }
@@ -406,6 +432,7 @@ async function handleUnban(ctx) {
       only_if_banned: true,
     });
     await replyEphemeral(ctx, `Unbanned ${displayName(target)}.`);
+    await logModAction(ctx, "Unban", target);
   } catch (err) {
     await replyEphemeral(ctx, `Failed to unban: ${err.message}`);
   }

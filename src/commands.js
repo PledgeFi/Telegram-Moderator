@@ -11,14 +11,22 @@ export const BOT_COMMANDS = [
 export const GROUP_COMMANDS = [
   { command: "help", description: "Show group command list" },
   { command: "stocks", description: "US watchlist prices" },
+  { command: "report", description: "Report a message to mods" },
   { command: "filter", description: "Set auto-reply trigger" },
   { command: "unfilter", description: "Remove auto-reply trigger" },
   { command: "filters", description: "List auto-reply triggers" },
+  { command: "blockword", description: "Block a word or phrase" },
+  { command: "unblockword", description: "Remove blocked word" },
+  { command: "blockwords", description: "List blocked words" },
+  { command: "warn", description: "Warn member (reply)" },
+  { command: "warns", description: "Show member warnings" },
+  { command: "unwarn", description: "Remove warning (reply)" },
   { command: "mute", description: "Mute member (reply to message)" },
   { command: "unmute", description: "Unmute member (reply to message)" },
   { command: "ban", description: "Ban member (reply to message)" },
   { command: "unban", description: "Unban member (reply or user ID)" },
   { command: "kick", description: "Kick member (reply to message)" },
+  { command: "setmodlog", description: "Set mod log topic" },
   { command: "setwelcome", description: "Set new member welcome message" },
   { command: "welcome", description: "Show welcome message settings" },
   { command: "unwelcome", description: "Disable welcome message" },
@@ -28,21 +36,31 @@ export const GROUP_COMMANDS = [
 export const GROUP_HELP_TEXT =
   "📋 *Group commands*\n\n" +
   "`/help` — Show this list\n" +
+  "`/stocks` — US watchlist prices\n" +
+  "`/report [reason]` — Report a message \\(reply\\)\n\n" +
+  "*Auto\\-reply*\n" +
   "`/filter <trigger> <response>` — Set auto\\-reply\n" +
   "`/unfilter <trigger>` — Remove auto\\-reply\n" +
-  "`/filters` — List auto\\-reply triggers\n" +
-  "`/mute` — Mute member \\(tap @ and pick from list\\)\n" +
-  "`/unmute` — Unmute member \\(tap @ and pick from list\\)\n" +
-  "`/ban` — Ban member \\(tap @ and pick from list\\)\n" +
-  "`/unban` — Unban member \\(tap @ and pick from list\\)\n" +
-  "`/kick` — Kick member \\(tap @ and pick from list\\)\n" +
+  "`/filters` — List auto\\-reply triggers\n\n" +
+  "*Blocked words* \\(auto\\-delete\\)\n" +
+  "`/blockword <word>` — Block word/phrase\n" +
+  "`/unblockword <word>` — Remove blocked word\n" +
+  "`/blockwords` — List blocked words\n\n" +
+  "*Warnings*\n" +
+  "`/warn [reason]` — Warn member \\(reply\\)\n" +
+  "`/warns` — Show warnings \\(reply\\)\n" +
+  "`/unwarn` — Remove 1 warn \\(reply\\)\n" +
+  "`/unwarn all` — Clear all warns \\(reply\\)\n\n" +
+  "*Moderation*\n" +
+  "`/mute` `/unmute` `/ban` `/unban` `/kick` — Member actions \\(reply\\)\n" +
+  "`/setmodlog` — Send mod logs to this topic\n\n" +
+  "*Welcome*\n" +
   "`/setwelcome <message>` — Set new member welcome\n" +
   "`/welcome` — Show welcome settings\n" +
-  "`/unwelcome` — Disable welcome message\n" +
-  "`/myid` — Show your Telegram user ID\n" +
-  "`/stocks` — US watchlist prices \\(AAPL, MSFT, AMZN, META, QQQ, SPY\\)\n\n" +
+  "`/unwelcome` — Disable welcome message\n\n" +
+  "`/myid` — Show your Telegram user ID\n\n" +
   "_Welcome placeholders: {name} {username} {mention} {group}_\n\n" +
-  "_Filter and moderation commands require group admin\\._";
+  "_Admin commands require group admin\\. 3 warns \\= auto\\-mute\\._";
 
 function isGroupOrChannel(ctx) {
   const type = ctx.chat?.type;

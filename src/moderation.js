@@ -1,4 +1,4 @@
-import { WARNING_DELETE_SECONDS } from "./config.js";
+import { ADMIN_IDS, WARNING_DELETE_SECONDS } from "./config.js";
 import { storage } from "./storage.js";
 import { topicDiscovery } from "./topicDiscovery.js";
 import { parseTopicLink, resolveTopicLink, ALL_THREAD_ID } from "./topicLink.js";

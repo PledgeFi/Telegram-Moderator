@@ -8,6 +8,9 @@ import { registerMemberActionHandlers } from "./memberActions.js";
 import { registerGroupHelpHandler, registerGroupCommandsForChat } from "./commands.js";
 import { registerWelcomeHandlers, handleNewChatMembers, handleChatMemberJoin } from "./welcome.js";
 import { registerStocksHandlers } from "./stocks.js";
+import { registerWarnHandlers } from "./warns.js";
+import { registerReportHandlers } from "./reports.js";
+import { registerBlockwordHandlers, handleBlockwordCheck } from "./blockwords.js";
 import { discoverTopicFromMessage } from "./topicDiscovery.js";
 import { rememberMessageUser, rememberChatMember } from "./userRegistry.js";
 import { moderatedStore } from "./moderatedStore.js";
@@ -66,6 +69,9 @@ export function createBot() {
   registerMemberActionHandlers(bot);
   registerWelcomeHandlers(bot);
   registerStocksHandlers(bot);
+  registerWarnHandlers(bot);
+  registerReportHandlers(bot);
+  registerBlockwordHandlers(bot);
 
   bot.on("chat_member", async (ctx) => {
     if (ctx.chat?.type === "private") return;
@@ -85,6 +91,7 @@ export function createBot() {
         await handleNewChatMembers(ctx, ctx.message);
       }
       await discoverTopicFromMessage(ctx.telegram, ctx.message, ctx.chat);
+      if (await handleBlockwordCheck(ctx, ctx.message)) return;
       await handleFilterTrigger(ctx, ctx.message);
       await moderateMessage(ctx, ctx.message);
     }
@@ -93,6 +100,7 @@ export function createBot() {
   bot.on("channel_post", async (ctx) => {
     if (ctx.channelPost) {
       await discoverTopicFromMessage(ctx.telegram, ctx.channelPost, ctx.chat);
+      if (await handleBlockwordCheck(ctx, ctx.channelPost)) return;
       await handleFilterTrigger(ctx, ctx.channelPost);
       await moderateMessage(ctx, ctx.channelPost);
     }
