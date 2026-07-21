@@ -13,12 +13,6 @@ function escapeHtml(text) {
     .replace(/>/g, "&gt;");
 }
 
-function truncate(text, max = 200) {
-  const value = String(text || "").trim();
-  if (value.length <= max) return value;
-  return `${value.slice(0, max - 1)}…`;
-}
-
 function isGroupOrChannel(ctx) {
   const type = ctx.chat?.type;
   return type === "group" || type === "supergroup" || type === "channel";
@@ -180,17 +174,6 @@ export async function handleBlockwordCheck(ctx, msg) {
   } catch (err) {
     console.warn(`Blockword notice failed in ${ctx.chat.id}:`, err.message);
   }
-
-  await sendModLog(
-    ctx.telegram,
-    ctx.chat.id,
-    `${modLogHeader("Blocked word")}\n` +
-      `Group: ${escapeHtml(ctx.chat.title || String(ctx.chat.id))}\n` +
-      `User: ${formatUser(user)}\n` +
-      `Word: <code>${escapeHtml(matched)}</code>\n` +
-      `Message: <pre>${escapeHtml(truncate(text))}</pre>`,
-    { threadId: msg.message_thread_id ?? null }
-  );
 
   console.log(`Blocked word "${matched}" in chat ${ctx.chat.id} from user ${user.id}`);
   return true;
